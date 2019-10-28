@@ -134,6 +134,7 @@ namespace Host.Configuration
                     RequireClientSecret = false,
 
                     AllowedGrantTypes = GrantTypes.Code,
+                    RequireConsent = false,
                     RequirePkce = true,
 
                     RedirectUris = { "http://127.0.0.1", "sample-windows-client://callback" },
