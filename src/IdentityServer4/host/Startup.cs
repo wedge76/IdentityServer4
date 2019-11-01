@@ -13,6 +13,7 @@ using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 namespace Host
@@ -60,13 +61,20 @@ namespace Host
                 //.AddInMemoryClients(_config.GetSection("Clients"))
                 .AddInMemoryIdentityResources(Resources.GetIdentityResources())
                 .AddInMemoryApiResources(Resources.GetApiResources())
-                .AddDeveloperSigningCredential()
+                //.AddDeveloperSigningCredential()
                 .AddExtensionGrantValidator<Extensions.ExtensionGrantValidator>()
                 .AddExtensionGrantValidator<Extensions.NoSubjectExtensionGrantValidator>()
                 .AddJwtBearerClientAuthentication()
                 .AddAppAuthRedirectUriValidator()
                 .AddTestUsers(TestUsers.Users)
                 .AddMutualTlsSecretValidators();
+
+            //var cert = new X509Certificate2("./keys/identityserver.rsa.test.p12", "changeit");
+            //builder.AddSigningCredential(cert, "PS256");
+
+            var cert = new X509Certificate2("./keys/identityserver.ecdsa.test.p12", "changeit");
+            builder.AddSigningCredential(cert, "ES256");
+
 
             //var key = CryptoHelper.CreateECDsaSecurityKey();
             //builder.AddSigningCredential(key, SecurityAlgorithms.EcdsaSha256);

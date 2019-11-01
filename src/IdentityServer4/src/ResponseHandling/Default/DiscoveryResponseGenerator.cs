@@ -14,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 namespace IdentityServer4.ResponseHandling
@@ -367,9 +368,10 @@ namespace IdentityServer4.ResponseHandling
                     var cert64 = Convert.ToBase64String(x509Key.Certificate.RawData);
                     var thumbprint = Base64Url.Encode(x509Key.Certificate.GetCertHash());
 
-                    if (x509Key.PublicKey is RSA rsa)
+                    var rsaKey = x509Key.Certificate.GetRSAPublicKey();
+                    if (rsaKey != null)
                     {
-                        var parameters = rsa.ExportParameters(false);
+                        var parameters = rsaKey.ExportParameters(false);
                         var exponent = Base64Url.Encode(parameters.Exponent);
                         var modulus = Base64Url.Encode(parameters.Modulus);
 
@@ -384,11 +386,16 @@ namespace IdentityServer4.ResponseHandling
                             x5c = new[] { cert64 },
                             alg = key.SigningAlgorithm
                         };
+
                         webKeys.Add(rsaJsonWebKey);
+                        continue;
                     }
-                    else if (x509Key.PublicKey is ECDsa ecdsa)
+
+                    var pubkey = x509Key.Certificate.GetECDsaPublicKey();
+                    if (pubkey != null)
                     {
-                        var parameters = ecdsa.ExportParameters(false);
+                        var parameters = pubkey.ExportParameters(false);
+
                         var x = Base64Url.Encode(parameters.Q.X);
                         var y = Base64Url.Encode(parameters.Q.Y);
 
@@ -404,11 +411,9 @@ namespace IdentityServer4.ResponseHandling
                             x5c = new[] { cert64 },
                             alg = key.SigningAlgorithm
                         };
+
                         webKeys.Add(ecdsaJsonWebKey);
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"key type: {x509Key.PublicKey.GetType().Name} not supported.");
+                        continue;
                     }
                 }
                 else if (key.Key is RsaSecurityKey rsaKey)
