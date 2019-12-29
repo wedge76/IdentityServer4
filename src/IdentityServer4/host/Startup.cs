@@ -16,6 +16,8 @@ using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using Host.Extensions;
+using Microsoft.AspNetCore.HttpOverrides;
 
 namespace Host
 {
@@ -33,6 +35,9 @@ namespace Host
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddControllersWithViews();
+            
+            // cookie policy to deal with temporary browser incompatibilities
+            services.AddSameSiteCookiePolicy();
 
             // configures IIS out-of-proc settings (see https://github.com/aspnet/AspNetCore/issues/14882)
             services.Configure<IISOptions>(iis =>
@@ -98,6 +103,13 @@ namespace Host
 
         public void Configure(IApplicationBuilder app)
         {
+            app.UseForwardedHeaders(new ForwardedHeadersOptions
+            {
+                ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+            });
+            
+            app.UseCookiePolicy();
+            
             app.UseSerilogRequestLogging();
 
             app.UseDeveloperExceptionPage();
@@ -120,18 +132,18 @@ namespace Host
         public static IIdentityServerBuilder AddSigningCredential(this IIdentityServerBuilder builder)
         {
             // create random RS256 key
-            //return builder.AddDeveloperSigningCredential();
+            builder.AddDeveloperSigningCredential();
 
             // use an RSA-based certificate with RS256
-            //var cert = new X509Certificate2("./keys/identityserver.test.rsa.p12", "changeit");
-            //return builder.AddSigningCredential(cert, "RS256");
+            var cert = new X509Certificate2("./keys/identityserver.test.rsa.p12", "changeit");
+            builder.AddSigningCredential(cert, "RS256");
 
-            // ...or PS256
-            //return builder.AddSigningCredential(cert, "PS256");
+            // ...and PS256
+            builder.AddSigningCredential(cert, "PS256");
 
             // or manually extract ECDSA key from certificate (directly using the certificate is not support by Microsoft right now)
-            var cert = new X509Certificate2("./keys/identityserver.test.ecdsa.p12", "changeit");
-            var key = new ECDsaSecurityKey(cert.GetECDsaPrivateKey())
+            var ecCert = new X509Certificate2("./keys/identityserver.test.ecdsa.p12", "changeit");
+            var key = new ECDsaSecurityKey(ecCert.GetECDsaPrivateKey())
             {
                 KeyId = CryptoRandom.CreateUniqueId(16)
             };
@@ -215,20 +227,6 @@ namespace Host
                         RoleClaimType = "role"
                     };
                 });
-                //.AddWsFederation("adfs-wsfed", "ADFS with WS-Fed", options =>
-                //{
-                //    options.SignInScheme = IdentityServerConstants.ExternalCookieAuthenticationScheme;
-                //    options.SignOutScheme = IdentityServerConstants.SignoutScheme;
-
-                //    options.MetadataAddress = "https://adfs4.local/federationmetadata/2007-06/federationmetadata.xml";
-                //    options.Wtrealm = "urn:test";
-
-                //    options.TokenValidationParameters = new TokenValidationParameters
-                //    {
-                //        NameClaimType = "name",
-                //        RoleClaimType = "role"
-                //    };
-                //});
 
             return services;
         }

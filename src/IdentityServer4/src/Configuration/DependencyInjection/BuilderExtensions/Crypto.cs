@@ -45,7 +45,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new InvalidOperationException("Invalid curve for signing algorithm");
             }
 
-            builder.Services.AddSingleton<ISigningCredentialStore>(new DefaultSigningCredentialsStore(credential));
+            builder.Services.AddSingleton<ISigningCredentialStore>(new InMemorySigningCredentialsStore(credential));
 
             var keyInfo = new SecurityKeyInfo
             {
@@ -53,7 +53,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 SigningAlgorithm = credential.Algorithm
             };
 
-            builder.Services.AddSingleton<IValidationKeysStore>(new DefaultValidationKeysStore(new[] { keyInfo }));
+            builder.Services.AddSingleton<IValidationKeysStore>(new InMemoryValidationKeysStore(new[] { keyInfo }));
 
             return builder;
         }
@@ -76,7 +76,11 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new InvalidOperationException("X509 certificate does not have a private key.");
             }
 
-            var credential = new SigningCredentials(new X509SecurityKey(certificate), signingAlgorithm);
+            // add signing algorithm name to key ID to allow using the same key for two different algorithms (e.g. RS256 and PS56);
+            var key = new X509SecurityKey(certificate);
+            key.KeyId += signingAlgorithm;
+            
+            var credential = new SigningCredentials(key, signingAlgorithm);
             return builder.AddSigningCredential(credential);
         }
 
@@ -205,7 +209,7 @@ namespace Microsoft.Extensions.DependencyInjection
         /// <returns></returns>
         public static IIdentityServerBuilder AddValidationKey(this IIdentityServerBuilder builder, params SecurityKeyInfo[] keys)
         {
-            builder.Services.AddSingleton<IValidationKeysStore>(new DefaultValidationKeysStore(keys));
+            builder.Services.AddSingleton<IValidationKeysStore>(new InMemoryValidationKeysStore(keys));
 
             return builder;
         }
