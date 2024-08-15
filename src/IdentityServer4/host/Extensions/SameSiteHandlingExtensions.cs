@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Host.Extensions
+namespace IdentityServerHost.Extensions
 {
     // copied from https://devblogs.microsoft.com/aspnet/upcoming-samesite-cookie-changes-in-asp-net-and-asp-net-core/
     public static class SameSiteHandlingExtensions
@@ -26,7 +26,7 @@ namespace Host.Extensions
             if (options.SameSite == SameSiteMode.None)
             {
                 var userAgent = httpContext.Request.Headers["User-Agent"].ToString();
-                if (DisallowsSameSiteNone(userAgent))
+                if (!httpContext.Request.IsHttps || DisallowsSameSiteNone(userAgent))
                 {
                     // For .NET Core < 3.1 set SameSite = (SameSiteMode)(-1)
                     options.SameSite = SameSiteMode.Unspecified;

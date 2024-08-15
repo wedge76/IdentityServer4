@@ -36,7 +36,7 @@ namespace ConsoleResourceOwnerFlowPublic
                 UserName = "bob",
                 Password = "bob",
 
-                Scope = "api1 api2.read_only",
+                Scope = "resource1.scope1 resource2.scope1",
 
                 Parameters =
                 {

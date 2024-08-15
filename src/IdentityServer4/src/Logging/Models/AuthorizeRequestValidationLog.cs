@@ -35,9 +35,9 @@ namespace IdentityServer4.Logging.Models
 
         public Dictionary<string, string> Raw { get; set; }
 
-        public AuthorizeRequestValidationLog(ValidatedAuthorizeRequest request)
+        public AuthorizeRequestValidationLog(ValidatedAuthorizeRequest request, IEnumerable<string> sensitiveValuesFilter)
         {
-            Raw = request.Raw.ToScrubbedDictionary(OidcConstants.AuthorizeRequest.IdTokenHint);
+            Raw = request.Raw.ToScrubbedDictionary(sensitiveValuesFilter.ToArray());
 
             if (request.Client != null)
             {
@@ -75,7 +75,7 @@ namespace IdentityServer4.Logging.Models
             Nonce = request.Nonce;
 
             DisplayMode = request.DisplayMode;
-            PromptMode = request.PromptMode;
+            PromptMode = request.PromptModes.ToSpaceSeparatedString();
             LoginHint = request.LoginHint;
             MaxAge = request.MaxAge;
             SessionId = request.SessionId;

@@ -52,7 +52,7 @@ namespace IdentityServer4.ResponseHandling
         /// <summary>
         /// The secret parsers
         /// </summary>
-        protected readonly SecretParser SecretParsers;
+        protected readonly ISecretsListParser SecretParsers;
 
         /// <summary>
         /// The logger
@@ -74,7 +74,7 @@ namespace IdentityServer4.ResponseHandling
             IResourceStore resourceStore,
             IKeyMaterialService keys,
             ExtensionGrantValidator extensionGrants,
-            SecretParser secretParsers,
+            ISecretsListParser secretParsers,
             IResourceOwnerPasswordValidator resourceOwnerValidator,
             ILogger<DiscoveryResponseGenerator> logger)
         {
@@ -157,24 +157,45 @@ namespace IdentityServer4.ResponseHandling
 
                     if (Options.Endpoints.EnableTokenEndpoint)
                     {
-                        mtlsEndpoints.Add(OidcConstants.Discovery.TokenEndpoint, baseUrl + Constants.ProtocolRoutePaths.MtlsToken);
+                        mtlsEndpoints.Add(OidcConstants.Discovery.TokenEndpoint, ConstructMtlsEndpoint(Constants.ProtocolRoutePaths.Token));
                     }
                     if (Options.Endpoints.EnableTokenRevocationEndpoint)
                     {
-                        mtlsEndpoints.Add(OidcConstants.Discovery.RevocationEndpoint, baseUrl + Constants.ProtocolRoutePaths.MtlsRevocation);
+                        mtlsEndpoints.Add(OidcConstants.Discovery.RevocationEndpoint, ConstructMtlsEndpoint(Constants.ProtocolRoutePaths.Revocation));
                     }
                     if (Options.Endpoints.EnableIntrospectionEndpoint)
                     {
-                        mtlsEndpoints.Add(OidcConstants.Discovery.IntrospectionEndpoint, baseUrl + Constants.ProtocolRoutePaths.MtlsIntrospection);
+                        mtlsEndpoints.Add(OidcConstants.Discovery.IntrospectionEndpoint, ConstructMtlsEndpoint(Constants.ProtocolRoutePaths.Introspection));
                     }
                     if (Options.Endpoints.EnableDeviceAuthorizationEndpoint)
                     {
-                        mtlsEndpoints.Add(OidcConstants.Discovery.DeviceAuthorizationEndpoint, baseUrl + Constants.ProtocolRoutePaths.MtlsDeviceAuthorization);
+                        mtlsEndpoints.Add(OidcConstants.Discovery.DeviceAuthorizationEndpoint, ConstructMtlsEndpoint(Constants.ProtocolRoutePaths.DeviceAuthorization));
                     }
 
                     if (mtlsEndpoints.Any())
                     {
                         entries.Add(OidcConstants.Discovery.MtlsEndpointAliases, mtlsEndpoints);
+                    }
+
+                    string ConstructMtlsEndpoint(string endpoint)
+                    {
+                        // path based
+                        if (Options.MutualTls.DomainName.IsMissing())
+                        {
+                            return baseUrl + endpoint.Replace(Constants.ProtocolRoutePaths.ConnectPathPrefix, Constants.ProtocolRoutePaths.MtlsPathPrefix);
+                        }
+
+                        // domain based
+                        if (Options.MutualTls.DomainName.Contains("."))
+                        {
+                            return $"https://{Options.MutualTls.DomainName}/{endpoint}";
+                        }
+                        // sub-domain based
+                        else
+                        {
+                            var parts = baseUrl.Split("://");
+                            return $"https://{Options.MutualTls.DomainName}.{parts[1]}{endpoint}";
+                        }
                     }
                 }
             }
@@ -204,8 +225,7 @@ namespace IdentityServer4.ResponseHandling
 
                 if (Options.Discovery.ShowApiScopes)
                 {
-                    var apiScopes = from api in resources.ApiResources
-                                    from scope in api.Scopes
+                    var apiScopes = from scope in resources.ApiScopes
                                     where scope.ShowInDiscoveryDocument
                                     select scope.Name;
 
@@ -225,20 +245,8 @@ namespace IdentityServer4.ResponseHandling
 
                     // add non-hidden identity scopes related claims
                     claims.AddRange(resources.IdentityResources.Where(x => x.ShowInDiscoveryDocument).SelectMany(x => x.UserClaims));
-
-                    // add non-hidden api scopes related claims
-                    foreach (var resource in resources.ApiResources)
-                    {
-                        claims.AddRange(resource.UserClaims);
-
-                        foreach (var scope in resource.Scopes)
-                        {
-                            if (scope.ShowInDiscoveryDocument)
-                            {
-                                claims.AddRange(scope.UserClaims);
-                            }
-                        }
-                    }
+                    claims.AddRange(resources.ApiResources.Where(x => x.ShowInDiscoveryDocument).SelectMany(x => x.UserClaims));
+                    claims.AddRange(resources.ApiScopes.Where(x => x.ShowInDiscoveryDocument).SelectMany(x => x.UserClaims));
 
                     entries.Add(OidcConstants.Discovery.ClaimsSupported, claims.Distinct().ToArray());
                 }
@@ -303,7 +311,8 @@ namespace IdentityServer4.ResponseHandling
             var signingCredentials = await Keys.GetAllSigningCredentialsAsync();
             if (signingCredentials.Any())
             {
-                entries.Add(OidcConstants.Discovery.IdTokenSigningAlgorithmsSupported, new[] { signingCredentials.Select(c => c.Algorithm).Distinct() });
+                var signingAlgorithms = signingCredentials.Select(c => c.Algorithm).Distinct();
+                entries.Add(OidcConstants.Discovery.IdTokenSigningAlgorithmsSupported, signingAlgorithms);
             }
 
             entries.Add(OidcConstants.Discovery.SubjectTypesSupported, new[] { "public" });
@@ -327,24 +336,24 @@ namespace IdentityServer4.ResponseHandling
             // custom entries
             if (!Options.Discovery.CustomEntries.IsNullOrEmpty())
             {
-                foreach (var customEntry in Options.Discovery.CustomEntries)
+                foreach ((string key, object value) in Options.Discovery.CustomEntries)
                 {
-                    if (entries.ContainsKey(customEntry.Key))
+                    if (entries.ContainsKey(key))
                     {
-                        Logger.LogError("Discovery custom entry {key} cannot be added, because it already exists.", customEntry.Key);
+                        Logger.LogError("Discovery custom entry {key} cannot be added, because it already exists.", key);
                     }
                     else
                     {
-                        if (customEntry.Value is string customValueString)
+                        if (value is string customValueString)
                         {
                             if (customValueString.StartsWith("~/") && Options.Discovery.ExpandRelativePathsInCustomEntries)
                             {
-                                entries.Add(customEntry.Key, baseUrl + customValueString.Substring(2));
+                                entries.Add(key, baseUrl + customValueString.Substring(2));
                                 continue;
                             }
                         }
 
-                        entries.Add(customEntry.Key, customEntry.Value);
+                        entries.Add(key, value);
                     }
                 }
             }
@@ -358,7 +367,7 @@ namespace IdentityServer4.ResponseHandling
         public virtual async Task<IEnumerable<Models.JsonWebKey>> CreateJwkDocumentAsync()
         {
             var webKeys = new List<Models.JsonWebKey>();
-            
+
             foreach (var key in await Keys.GetValidationKeysAsync())
             {
                 if (key.Key is X509SecurityKey x509Key)
@@ -458,7 +467,7 @@ namespace IdentityServer4.ResponseHandling
                         n = jsonWebKey.N,
                         x5c = jsonWebKey.X5c?.Count == 0 ? null : jsonWebKey.X5c.ToArray(),
                         alg = jsonWebKey.Alg,
-
+                        crv = jsonWebKey.Crv,
                         x = jsonWebKey.X,
                         y = jsonWebKey.Y
                     };

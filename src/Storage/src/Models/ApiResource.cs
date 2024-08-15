@@ -5,15 +5,18 @@
 using IdentityServer4.Extensions;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 
 namespace IdentityServer4.Models
 {
     /// <summary>
     /// Models a web API resource.
     /// </summary>
+    [DebuggerDisplay("{" + nameof(DebuggerDisplay) + ",nq}")]
     public class ApiResource : Resource
     {
+        private string DebuggerDisplay => Name ?? $"{{{typeof(ApiResource)}}}";
+        
         /// <summary>
         /// Initializes a new instance of the <see cref="ApiResource"/> class.
         /// </summary>
@@ -44,9 +47,9 @@ namespace IdentityServer4.Models
         /// Initializes a new instance of the <see cref="ApiResource"/> class.
         /// </summary>
         /// <param name="name">The name.</param>
-        /// <param name="claimTypes">The claim types.</param>
-        public ApiResource(string name, IEnumerable<string> claimTypes)
-            : this(name, name, claimTypes)
+        /// <param name="userClaims">List of associated user claims that should be included when this resource is requested.</param>
+        public ApiResource(string name, IEnumerable<string> userClaims)
+            : this(name, name, userClaims)
         {
         }
 
@@ -55,20 +58,18 @@ namespace IdentityServer4.Models
         /// </summary>
         /// <param name="name">The name.</param>
         /// <param name="displayName">The display name.</param>
-        /// <param name="claimTypes">The claim types.</param>
+        /// <param name="userClaims">List of associated user claims that should be included when this resource is requested.</param>
         /// <exception cref="System.ArgumentNullException">name</exception>
-        public ApiResource(string name, string displayName, IEnumerable<string> claimTypes)
+        public ApiResource(string name, string displayName, IEnumerable<string> userClaims)
         {
             if (name.IsMissing()) throw new ArgumentNullException(nameof(name));
 
             Name = name;
             DisplayName = displayName;
 
-            Scopes.Add(new Scope(name, displayName));
-
-            if (!claimTypes.IsNullOrEmpty())
+            if (!userClaims.IsNullOrEmpty())
             {
-                foreach (var type in claimTypes)
+                foreach (var type in userClaims)
                 {
                     UserClaims.Add(type);
                 }
@@ -81,9 +82,9 @@ namespace IdentityServer4.Models
         public ICollection<Secret> ApiSecrets { get; set; } = new HashSet<Secret>();
 
         /// <summary>
-        /// An API must have at least one scope. Each scope can have different settings.
+        /// Models the scopes this API resource allows.
         /// </summary>
-        public ICollection<Scope> Scopes { get; set; } = new HashSet<Scope>();
+        public ICollection<string> Scopes { get; set; } = new HashSet<string>();
 
         /// <summary>
         /// Signing algorithm for access token. If empty, will use the server default signing algorithm.

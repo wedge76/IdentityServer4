@@ -54,7 +54,8 @@ namespace IdentityServer.IntegrationTests.Common
         public IdentityServerOptions Options { get; set; }
         public List<Client> Clients { get; set; } = new List<Client>();
         public List<IdentityResource> IdentityScopes { get; set; } = new List<IdentityResource>();
-        public List<ApiResource> ApiScopes { get; set; } = new List<ApiResource>();
+        public List<ApiResource> ApiResources { get; set; } = new List<ApiResource>();
+        public List<ApiScope> ApiScopes { get; set; } = new List<ApiScope>();
         public List<TestUser> Users { get; set; } = new List<TestUser>();
 
         public TestServer Server { get; set; }
@@ -137,15 +138,15 @@ namespace IdentityServer.IntegrationTests.Common
             })
             .AddInMemoryClients(Clients)
             .AddInMemoryIdentityResources(IdentityScopes)
-            .AddInMemoryApiResources(ApiScopes)
+            .AddInMemoryApiResources(ApiResources)
+            .AddInMemoryApiScopes(ApiScopes)
             .AddTestUsers(Users)
             .AddDeveloperSigningCredential(persistKey: false);
 
-            services.AddHttpClient()
-                .AddHttpClient<BackChannelLogoutHttpClient>()
+            services.AddHttpClient(IdentityServerConstants.HttpClients.BackChannelLogoutHttpClient)
                 .AddHttpMessageHandler(() => BackChannelMessageHandler);
 
-            services.AddHttpClient<JwtRequestUriHttpClient>()
+            services.AddHttpClient(IdentityServerConstants.HttpClients.JwtRequestUriHttpClient)
                 .AddHttpMessageHandler(() => JwtRequestMessageHandler);
 
             OnPostConfigureServices(services);
@@ -218,6 +219,7 @@ namespace IdentityServer.IntegrationTests.Common
         {
             LogoutWasCalled = true;
             await ReadLogoutRequest(ctx);
+            await ctx.SignOutAsync();
         }
 
         private async Task ReadLogoutRequest(HttpContext ctx)

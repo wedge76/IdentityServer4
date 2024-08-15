@@ -2,12 +2,15 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\build\Program.Partial.cs" Link="Program.Partial.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Bullseye" />
-    <PackageReference Include="McMaster.Extensions.CommandLineUtils" />
     <PackageReference Include="SimpleExec" />
   </ItemGroup>
   

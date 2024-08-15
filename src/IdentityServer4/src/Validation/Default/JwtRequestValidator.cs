@@ -6,9 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using IdentityModel;
+using IdentityServer4.Configuration;
 using IdentityServer4.Extensions;
 using IdentityServer4.Models;
 using Microsoft.AspNetCore.Http;
@@ -20,12 +20,20 @@ using Newtonsoft.Json.Linq;
 namespace IdentityServer4.Validation
 {
     /// <summary>
-    /// Validates JWT requwest objects
+    /// Validates JWT authorization request objects
     /// </summary>
     public class JwtRequestValidator
     {
         private readonly string _audienceUri;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        
+        /// <summary>
+        /// JWT handler
+        /// </summary>
+        protected JwtSecurityTokenHandler Handler = new JwtSecurityTokenHandler
+        {
+            MapInboundClaims = false
+        };
 
         /// <summary>
         /// The audience URI to use
@@ -38,10 +46,8 @@ namespace IdentityServer4.Validation
                 {
                     return _audienceUri;
                 }
-                else
-                {
-                    return _httpContextAccessor.HttpContext.GetIdentityServerIssuerUri();
-                }
+
+                return _httpContextAccessor.HttpContext.GetIdentityServerIssuerUri();
             }
         }
 
@@ -49,13 +55,20 @@ namespace IdentityServer4.Validation
         /// The logger
         /// </summary>
         protected readonly ILogger Logger;
+        
+        /// <summary>
+        /// The optione
+        /// </summary>
+        protected readonly IdentityServerOptions Options;
 
         /// <summary>
         /// Instantiates an instance of private_key_jwt secret validator
         /// </summary>
-        public JwtRequestValidator(IHttpContextAccessor contextAccessor, ILogger<JwtRequestValidator> logger)
+        public JwtRequestValidator(IHttpContextAccessor contextAccessor, IdentityServerOptions options, ILogger<JwtRequestValidator> logger)
         {
             _httpContextAccessor = contextAccessor;
+            
+            Options = options;
             Logger = logger;
         }
 
@@ -162,9 +175,13 @@ namespace IdentityServer4.Validation
                 RequireExpirationTime = true
             };
 
-            var handler = new JwtSecurityTokenHandler();
-            handler.ValidateToken(jwtTokenString, tokenValidationParameters, out var token);
+            if (Options.StrictJarValidation)
+            {
+                tokenValidationParameters.ValidTypes = new[] { JwtClaimTypes.JwtTypes.AuthorizationRequest };
+            }
 
+            Handler.ValidateToken(jwtTokenString, tokenValidationParameters, out var token);
+            
             return Task.FromResult((JwtSecurityToken)token);
         }
 
@@ -183,17 +200,17 @@ namespace IdentityServer4.Validation
                 {
                     var value = token.Payload[key];
 
-                    if (value is string s)
+                    switch (value)
                     {
-                        payload.Add(key, s);
-                    }
-                    else if (value is JObject jobj)
-                    {
-                        payload.Add(key, jobj.ToString(Formatting.None));
-                    }
-                    else if (value is JArray jarr)
-                    {
-                        payload.Add(key, jarr.ToString(Formatting.None));
+                        case string s:
+                            payload.Add(key, s);
+                            break;
+                        case JObject jobj:
+                            payload.Add(key, jobj.ToString(Formatting.None));
+                            break;
+                        case JArray jarr:
+                            payload.Add(key, jarr.ToString(Formatting.None));
+                            break;
                     }
                 }
             }

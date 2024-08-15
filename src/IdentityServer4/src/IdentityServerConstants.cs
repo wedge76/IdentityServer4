@@ -107,7 +107,7 @@ namespace IdentityServer4
 
             SecurityAlgorithms.EcdsaSha256,
             SecurityAlgorithms.EcdsaSha384,
-            SecurityAlgorithms.EcdsaSha512,
+            SecurityAlgorithms.EcdsaSha512
         };
 
         public enum RsaSigningAlgorithm
@@ -119,7 +119,7 @@ namespace IdentityServer4
             PS256,
             PS384,
             PS512
-        };
+        }
 
         public enum ECDsaSigningAlgorithm
         {
@@ -159,9 +159,11 @@ namespace IdentityServer4
             public const string Numeric = "Numeric";
         }
 
-        public class MutualTls
+        public static class HttpClients
         {
-            public const string X509CertificateItemKey = "IdentityServer:MTLS:X509Certificate";
+            public const int DefaultTimeoutSeconds = 10;
+            public const string JwtRequestUriHttpClient = "IdentityServer:JwtRequestUriClient";
+            public const string BackChannelLogoutHttpClient = "IdentityServer:BackChannelLogoutClient";
         }
     }
 }

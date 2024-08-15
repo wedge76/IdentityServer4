@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using IdentityServer4.EntityFramework;
 using IdentityServer4.EntityFramework.Entities;
 
-namespace Host
+namespace IdentityServerHost
 {
     public class TestOperationalStoreNotification : IOperationalStoreNotification
     {
@@ -18,6 +18,15 @@ namespace Host
             foreach (var grant in persistedGrants)
             {
                 Console.WriteLine("cleaned: " + grant.Type);
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task DeviceCodesRemovedAsync(IEnumerable<DeviceFlowCodes> deviceCodes)
+        {
+            foreach (var deviceCode in deviceCodes) 
+            {
+                Console.WriteLine("cleaned device code");
             }
             return Task.CompletedTask;
         }

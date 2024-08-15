@@ -7,7 +7,6 @@ using IdentityServer4.Models;
 using IdentityServer4.Services;
 using IdentityServer4.Stores;
 using Microsoft.AspNetCore.Authentication;
-using IdentityServer.UnitTests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,7 +22,7 @@ namespace IdentityServer.UnitTests.Common
         public MockHttpContextAccessor(
             IdentityServerOptions options = null,
             IUserSession userSession = null,
-            IMessageStore<EndSession> endSessionStore = null)
+            IMessageStore<LogoutNotificationContext> endSessionStore = null)
         {
             options = options ?? TestIdentityServerOptions.Create();
 
@@ -49,7 +48,7 @@ namespace IdentityServer.UnitTests.Common
 
             if (endSessionStore == null)
             {
-                services.AddTransient<IMessageStore<EndSession>, ProtectedDataMessageStore<EndSession>>();
+                services.AddTransient<IMessageStore<LogoutNotificationContext>, ProtectedDataMessageStore<LogoutNotificationContext>>();
             }
             else
             {

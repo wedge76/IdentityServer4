@@ -3,9 +3,9 @@
 
 using System;
 using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using IdentityServer4.Configuration;
+using IdentityServer4.Extensions;
 using IdentityServer4.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -45,7 +45,7 @@ namespace IdentityServer4.Validation
         {
             _logger.LogDebug("Start parsing for client id in post body");
 
-            if (!context.Request.HasFormContentType)
+            if (!context.Request.HasApplicationFormContentType())
             {
                 _logger.LogDebug("Content type is not a form");
                 return null;
@@ -65,24 +65,19 @@ namespace IdentityServer4.Validation
                         _logger.LogError("Client ID exceeds maximum length.");
                         return null;
                     }
-
-                    if (!context.Items.ContainsKey(IdentityServerConstants.MutualTls.X509CertificateItemKey))
+                    
+                    var clientCertificate = await context.Connection.GetClientCertificateAsync();
+                    
+                    if (clientCertificate is null)
                     {
                         _logger.LogDebug("Client certificate not present");
                         return null;
                     }
-
-                    var cert = context.Items[IdentityServerConstants.MutualTls.X509CertificateItemKey] as X509Certificate2;
-                    if (cert == null)
-                    {
-                        _logger.LogDebug("Client certificate invalid from items collection");
-                        return null;
-                    }
-
+                    
                     return new ParsedSecret
                     {
                         Id = id,
-                        Credential = cert,
+                        Credential = clientCertificate,
                         Type = IdentityServerConstants.ParsedSecretTypes.X509Certificate
                     };
                 }

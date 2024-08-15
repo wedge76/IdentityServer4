@@ -27,8 +27,10 @@ namespace IdentityServer4.Validation
         private readonly IAuthorizationCodeStore _authorizationCodeStore;
         private readonly ExtensionGrantValidator _extensionGrantValidator;
         private readonly ICustomTokenRequestValidator _customRequestValidator;
-        private readonly ScopeValidator _scopeValidator;
+        private readonly IResourceValidator _resourceValidator;
+        private readonly IResourceStore _resourceStore;
         private readonly ITokenValidator _tokenValidator;
+        private readonly IRefreshTokenService _refreshTokenService;
         private readonly IEventService _events;
         private readonly IResourceOwnerPasswordValidator _resourceOwnerValidator;
         private readonly IProfileService _profile;
@@ -48,12 +50,27 @@ namespace IdentityServer4.Validation
         /// <param name="deviceCodeValidator">The device code validator.</param>
         /// <param name="extensionGrantValidator">The extension grant validator.</param>
         /// <param name="customRequestValidator">The custom request validator.</param>
-        /// <param name="scopeValidator">The scope validator.</param>
+        /// <param name="resourceValidator">The resource validator.</param>
+        /// <param name="resourceStore">The resource store.</param>
         /// <param name="tokenValidator">The token validator.</param>
+        /// <param name="refreshTokenService"></param>
         /// <param name="events">The events.</param>
         /// <param name="clock">The clock.</param>
         /// <param name="logger">The logger.</param>
-        public TokenRequestValidator(IdentityServerOptions options, IAuthorizationCodeStore authorizationCodeStore, IResourceOwnerPasswordValidator resourceOwnerValidator, IProfileService profile, IDeviceCodeValidator deviceCodeValidator, ExtensionGrantValidator extensionGrantValidator, ICustomTokenRequestValidator customRequestValidator, ScopeValidator scopeValidator, ITokenValidator tokenValidator, IEventService events, ISystemClock clock, ILogger<TokenRequestValidator> logger)
+        public TokenRequestValidator(IdentityServerOptions options, 
+            IAuthorizationCodeStore authorizationCodeStore, 
+            IResourceOwnerPasswordValidator resourceOwnerValidator, 
+            IProfileService profile, 
+            IDeviceCodeValidator deviceCodeValidator, 
+            ExtensionGrantValidator extensionGrantValidator, 
+            ICustomTokenRequestValidator customRequestValidator,
+            IResourceValidator resourceValidator,
+            IResourceStore resourceStore,
+            ITokenValidator tokenValidator, 
+            IRefreshTokenService refreshTokenService,
+            IEventService events, 
+            ISystemClock clock, 
+            ILogger<TokenRequestValidator> logger)
         {
             _logger = logger;
             _options = options;
@@ -64,8 +81,10 @@ namespace IdentityServer4.Validation
             _deviceCodeValidator = deviceCodeValidator;
             _extensionGrantValidator = extensionGrantValidator;
             _customRequestValidator = customRequestValidator;
-            _scopeValidator = scopeValidator;
+            _resourceValidator = resourceValidator;
+            _resourceStore = resourceStore;
             _tokenValidator = tokenValidator;
+            _refreshTokenService = refreshTokenService;
             _events = events;
         }
 
@@ -216,7 +235,18 @@ namespace IdentityServer4.Validation
                 LogError("Invalid authorization code", new { code });
                 return Invalid(OidcConstants.TokenErrors.InvalidGrant);
             }
+            
+            /////////////////////////////////////////////
+            // validate client binding
+            /////////////////////////////////////////////
+            if (authZcode.ClientId != _validatedRequest.Client.ClientId)
+            {
+                LogError("Client is trying to use a code from a different client", new { clientId = _validatedRequest.Client.ClientId, codeClient = authZcode.ClientId });
+                return Invalid(OidcConstants.TokenErrors.InvalidGrant);
+            }
 
+            // remove code from store
+            // todo: set to consumed in the future?
             await _authorizationCodeStore.RemoveAuthorizationCodeAsync(code);
 
             if (authZcode.CreationTime.HasExceeded(authZcode.Lifetime, _clock.UtcNow.UtcDateTime))
@@ -231,15 +261,6 @@ namespace IdentityServer4.Validation
             if (authZcode.SessionId.IsPresent())
             {
                 _validatedRequest.SessionId = authZcode.SessionId;
-            }
-
-            /////////////////////////////////////////////
-            // validate client binding
-            /////////////////////////////////////////////
-            if (authZcode.ClientId != _validatedRequest.Client.ClientId)
-            {
-                LogError("Client is trying to use a code from a different client", new { clientId = _validatedRequest.Client.ClientId, codeClient = authZcode.ClientId });
-                return Invalid(OidcConstants.TokenErrors.InvalidGrant);
             }
 
             /////////////////////////////////////////////
@@ -267,7 +288,7 @@ namespace IdentityServer4.Validation
             if (redirectUri.Equals(_validatedRequest.AuthorizationCode.RedirectUri, StringComparison.Ordinal) == false)
             {
                 LogError("Invalid redirect_uri", new { redirectUri, expectedRedirectUri = _validatedRequest.AuthorizationCode.RedirectUri });
-                return Invalid(OidcConstants.TokenErrors.UnauthorizedClient);
+                return Invalid(OidcConstants.TokenErrors.InvalidGrant);
             }
 
             /////////////////////////////////////////////
@@ -343,13 +364,13 @@ namespace IdentityServer4.Validation
                 return Invalid(OidcConstants.TokenErrors.InvalidScope);
             }
 
-            if (_validatedRequest.ValidatedScopes.ContainsOpenIdScopes)
+            if (_validatedRequest.ValidatedResources.Resources.IdentityResources.Any())
             {
                 LogError("Client cannot request OpenID scopes in client credentials flow", new { clientId = _validatedRequest.Client.ClientId });
                 return Invalid(OidcConstants.TokenErrors.InvalidScope);
             }
 
-            if (_validatedRequest.ValidatedScopes.ContainsOfflineAccessScope)
+            if (_validatedRequest.ValidatedResources.Resources.OfflineAccess)
             {
                 LogError("Client cannot request a refresh token in client credentials flow", new { clientId = _validatedRequest.Client.ClientId });
                 return Invalid(OidcConstants.TokenErrors.InvalidScope);
@@ -421,7 +442,7 @@ namespace IdentityServer4.Validation
             if (resourceOwnerContext.Result.IsError)
             {
                 // protect against bad validator implementations
-                resourceOwnerContext.Result.Error = resourceOwnerContext.Result.Error ?? OidcConstants.TokenErrors.InvalidGrant;
+                resourceOwnerContext.Result.Error ??= OidcConstants.TokenErrors.InvalidGrant;
 
                 if (resourceOwnerContext.Result.Error == OidcConstants.TokenErrors.UnsupportedGrantType)
                 {
@@ -492,7 +513,7 @@ namespace IdentityServer4.Validation
                 return Invalid(OidcConstants.TokenErrors.InvalidGrant);
             }
 
-            var result = await _tokenValidator.ValidateRefreshTokenAsync(refreshTokenHandle, _validatedRequest.Client);
+            var result = await _refreshTokenService.ValidateRefreshTokenAsync(refreshTokenHandle, _validatedRequest.Client);
 
             if (result.IsError)
             {
@@ -505,13 +526,15 @@ namespace IdentityServer4.Validation
             _validatedRequest.Subject = result.RefreshToken.Subject;
 
             _logger.LogDebug("Validation of refresh token request success");
+            // todo: more logging - similar to TokenValidator before
+            
             return Valid();
         }
 
         private async Task<TokenRequestValidationResult> ValidateDeviceCodeRequestAsync(NameValueCollection parameters)
         {
             _logger.LogDebug("Start validation of device code request");
-            
+
             /////////////////////////////////////////////
             // check if client is authorized for grant type
             /////////////////////////////////////////////
@@ -540,11 +563,11 @@ namespace IdentityServer4.Validation
             /////////////////////////////////////////////
             // validate device code
             /////////////////////////////////////////////
-            var deviceCodeContext = new DeviceCodeValidationContext {DeviceCode = deviceCode, Request = _validatedRequest};
+            var deviceCodeContext = new DeviceCodeValidationContext { DeviceCode = deviceCode, Request = _validatedRequest };
             await _deviceCodeValidator.ValidateAsync(deviceCodeContext);
 
             if (deviceCodeContext.Result.IsError) return deviceCodeContext.Result;
-            
+
             _logger.LogDebug("Validation of authorization code token request success");
 
             return Valid();
@@ -632,23 +655,30 @@ namespace IdentityServer4.Validation
             return Valid(result.CustomResponse);
         }
 
+        // todo: do we want to rework the semantics of these ignore params?
+        // also seems like other workflows other than CC clients can omit scopes?
         private async Task<bool> ValidateRequestedScopesAsync(NameValueCollection parameters, bool ignoreImplicitIdentityScopes = false, bool ignoreImplicitOfflineAccess = false)
         {
-            var ignoreIdentityScopes = false;
-
             var scopes = parameters.Get(OidcConstants.TokenRequest.Scope);
             if (scopes.IsMissing())
             {
-                if (ignoreImplicitIdentityScopes)
-                {
-                    ignoreIdentityScopes = true;
-                }
-
                 _logger.LogTrace("Client provided no scopes - checking allowed scopes list");
 
                 if (!_validatedRequest.Client.AllowedScopes.IsNullOrEmpty())
                 {
-                    var clientAllowedScopes = new List<string>(_validatedRequest.Client.AllowedScopes);
+                    // this finds all the scopes the client is allowed to access
+                    var clientAllowedScopes = new List<string>();
+                    if (!ignoreImplicitIdentityScopes)
+                    {
+                        var resources = await _resourceStore.FindResourcesByScopeAsync(_validatedRequest.Client.AllowedScopes);
+                        clientAllowedScopes.AddRange(resources.ToScopeNames().Where(x => _validatedRequest.Client.AllowedScopes.Contains(x)));
+                    }
+                    else
+                    {
+                        var apiScopes = await _resourceStore.FindApiScopesByNameAsync(_validatedRequest.Client.AllowedScopes);
+                        clientAllowedScopes.AddRange(apiScopes.Select(x => x.Name));
+                    }
+
                     if (!ignoreImplicitOfflineAccess)
                     {
                         if (_validatedRequest.Client.AllowOfflineAccess)
@@ -657,7 +687,7 @@ namespace IdentityServer4.Validation
                         }
                     }
 
-                    scopes = clientAllowedScopes.ToSpaceSeparatedString();
+                    scopes = clientAllowedScopes.Distinct().ToSpaceSeparatedString();
                     _logger.LogTrace("Defaulting to: {scopes}", scopes);
                 }
                 else
@@ -681,20 +711,28 @@ namespace IdentityServer4.Validation
                 return false;
             }
 
-            if (!await _scopeValidator.AreScopesAllowedAsync(_validatedRequest.Client, requestedScopes))
+            var resourceValidationResult = await _resourceValidator.ValidateRequestedResourcesAsync(new ResourceValidationRequest { 
+                Client = _validatedRequest.Client,
+                Scopes = requestedScopes
+            });
+
+            if (!resourceValidationResult.Succeeded)
             {
-                LogError();
+                if (resourceValidationResult.InvalidScopes.Any())
+                {
+                    LogError("Invalid scopes requested");
+                }
+                else
+                {
+                    LogError("Invalid scopes for client requested");
+                }
+
                 return false;
             }
 
-            if (!(await _scopeValidator.AreScopesValidAsync(requestedScopes, ignoreIdentityScopes)))
-            {
-                LogError();
-                return false;
-            }
-
-            _validatedRequest.Scopes = requestedScopes;
-            _validatedRequest.ValidatedScopes = _scopeValidator;
+            _validatedRequest.RequestedScopes = requestedScopes;
+            _validatedRequest.ValidatedResources = resourceValidationResult;
+            
             return true;
         }
 
@@ -775,7 +813,7 @@ namespace IdentityServer4.Validation
 
         private void LogWithRequestDetails(LogLevel logLevel, string message = null, object values = null)
         {
-            var details = new TokenRequestValidationLog(_validatedRequest);
+            var details = new TokenRequestValidationLog(_validatedRequest, _options.Logging.TokenRequestSensitiveValuesFilter);
 
             if (message.IsPresent())
             {
@@ -789,7 +827,7 @@ namespace IdentityServer4.Validation
                     {
                         _logger.Log(logLevel, message + "{@values}, details: {@details}", values, details);
                     }
-                    
+
                 }
                 catch (Exception ex)
                 {
@@ -809,12 +847,12 @@ namespace IdentityServer4.Validation
 
         private Task RaiseSuccessfulResourceOwnerAuthenticationEventAsync(string userName, string subjectId, string clientId)
         {
-            return _events.RaiseAsync(new UserLoginSuccessEvent(userName, subjectId, null, false, clientId));
+            return _events.RaiseAsync(new UserLoginSuccessEvent(userName, subjectId, null, interactive: false, clientId));
         }
 
         private Task RaiseFailedResourceOwnerAuthenticationEventAsync(string userName, string error, string clientId)
         {
-            return _events.RaiseAsync(new UserLoginFailureEvent(userName, error, clientId: clientId));
+            return _events.RaiseAsync(new UserLoginFailureEvent(userName, error, interactive: false, clientId: clientId));
         }
     }
 }

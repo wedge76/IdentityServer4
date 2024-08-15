@@ -5,6 +5,7 @@
 using IdentityServer4.Validation;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
 
 namespace IdentityServer4.Models
 {
@@ -14,12 +15,9 @@ namespace IdentityServer4.Models
     public class AuthorizationRequest
     {
         /// <summary>
-        /// The client identifier that initiated the request.
+        /// The client.
         /// </summary>
-        /// <value>
-        /// The client identifier.
-        /// </value>
-        public string ClientId { get; set; }
+        public Client Client { get; set; }
 
         /// <summary>
         /// The display mode passed from the authorization request.
@@ -74,12 +72,12 @@ namespace IdentityServer4.Models
         public string LoginHint { get; set; }
 
         /// <summary>
-        /// Gets or sets the prompt mode.
+        /// Gets or sets the collection of prompt modes.
         /// </summary>
         /// <value>
-        /// The prompt mode.
+        /// The collection of prompt modes.
         /// </value>
-        public string PromptMode { get; set; }
+        public IEnumerable<string> PromptModes { get; set; } = Enumerable.Empty<string>();
 
         /// <summary>
         /// The acr values passed from the authorization request.
@@ -90,12 +88,9 @@ namespace IdentityServer4.Models
         public IEnumerable<string> AcrValues { get; set; }
 
         /// <summary>
-        /// Gets or sets the scopes requested.
+        /// The validated resources.
         /// </summary>
-        /// <value>
-        /// The scopes requested.
-        /// </value>
-        public IEnumerable<string> ScopesRequested { get; set; }
+        public ResourceValidationResult ValidatedResources { get; set; }
 
         /// <summary>
         /// Gets the entire parameter collection.
@@ -113,6 +108,7 @@ namespace IdentityServer4.Models
         /// </value>
         public Dictionary<string, string> RequestObjectValues { get; } = new Dictionary<string, string>();
 
+
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthorizationRequest"/> class.
         /// </summary>
@@ -127,16 +123,16 @@ namespace IdentityServer4.Models
         /// </summary>
         internal AuthorizationRequest(ValidatedAuthorizeRequest request)
         {
-            ClientId = request.ClientId;
+            Client = request.Client;
             RedirectUri = request.RedirectUri;
             DisplayMode = request.DisplayMode;
             UiLocales = request.UiLocales;
             IdP = request.GetIdP();
             Tenant = request.GetTenant();
             LoginHint = request.LoginHint;
-            PromptMode = request.PromptMode;
+            PromptModes = request.PromptModes;
             AcrValues = request.GetAcrValues();
-            ScopesRequested = request.RequestedScopes;
+            ValidatedResources = request.ValidatedResources;
             Parameters = request.Raw;
             RequestObjectValues = request.RequestObjectValues;
         }

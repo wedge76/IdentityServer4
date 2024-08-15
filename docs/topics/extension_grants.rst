@@ -103,7 +103,7 @@ Don't forget to register the validator with DI.
 
 You need a client registration in IdentityServer that allows a client to use this new extension grant, e.g.::
 
-    var client = new client
+    var client = new Client
     {
         ClientId = "api1.client",
         ClientSecrets = new List<Secret>
@@ -126,16 +126,25 @@ In API 1 you can now construct the HTTP payload yourself, or use the *IdentityMo
 
     public async Task<TokenResponse> DelegateAsync(string userToken)
     {
-        var payload = new
-        {
-            token = userToken
-        };
-
-        // create token client
-        var client = new TokenClient(disco.TokenEndpoint, "api1.client", "secret");
+        var client = _httpClientFactory.CreateClient();
+        // or 
+        // var client = new HttpClient();
 
         // send custom grant to token endpoint, return response
-        return await client.RequestCustomGrantAsync("delegation", "api2", payload);
+        return await client.RequestTokenAsync(new TokenRequest
+        {
+            Address = disco.TokenEndpoint,
+            GrantType = "delegation",
+
+            ClientId = "api1.client",
+            ClientSecret = "secret",
+
+            Parameters =
+            {
+                { "scope", "api2" },
+                { "token", userToken}
+            }                
+        });
     }
 
 The ``TokenResponse.AccessToken`` will now contain the delegation access token.

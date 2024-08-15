@@ -3,6 +3,7 @@
 
 
 using System.Collections.Generic;
+using System.Linq;
 using IdentityModel;
 using IdentityServer4.Extensions;
 using IdentityServer4.Validation;
@@ -26,19 +27,9 @@ namespace IdentityServer4.Logging.Models
 
         public Dictionary<string, string> Raw { get; set; }
 
-        private static readonly string[] SensitiveValuesFilter =
+        public TokenRequestValidationLog(ValidatedTokenRequest request, IEnumerable<string> sensitiveValuesFilter)
         {
-            OidcConstants.TokenRequest.ClientSecret,
-            OidcConstants.TokenRequest.Password,
-            OidcConstants.TokenRequest.ClientAssertion,
-            OidcConstants.TokenRequest.RefreshToken,
-            OidcConstants.TokenRequest.DeviceCode
-
-        };
-
-        public TokenRequestValidationLog(ValidatedTokenRequest request)
-        {
-            Raw = request.Raw.ToScrubbedDictionary(SensitiveValuesFilter);
+            Raw = request.Raw.ToScrubbedDictionary(sensitiveValuesFilter.ToArray());
 
             if (request.Client != null)
             {
@@ -46,14 +37,14 @@ namespace IdentityServer4.Logging.Models
                 ClientName = request.Client.ClientName;
             }
 
-            if (request.Scopes != null)
+            if (request.RequestedScopes != null)
             {
-                Scopes = request.Scopes.ToSpaceSeparatedString();
+                Scopes = request.RequestedScopes.ToSpaceSeparatedString();
             }
 
             GrantType = request.GrantType;
-            AuthorizationCode = request.AuthorizationCodeHandle;
-            RefreshToken = request.RefreshTokenHandle;
+            AuthorizationCode = request.AuthorizationCodeHandle.Obfuscate();
+            RefreshToken = request.RefreshTokenHandle.Obfuscate();
             UserName = request.UserName;
         }
 

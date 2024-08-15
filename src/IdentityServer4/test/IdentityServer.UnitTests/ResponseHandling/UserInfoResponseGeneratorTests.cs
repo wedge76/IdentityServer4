@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using IdentityServer.UnitTests.Common;
@@ -27,6 +28,7 @@ namespace IdentityServer.UnitTests.ResponseHandling
         private InMemoryResourcesStore _resourceStore;
         private List<IdentityResource> _identityResources = new List<IdentityResource>();
         private List<ApiResource> _apiResources = new List<ApiResource>();
+        private List<ApiScope> _apiScopes = new List<ApiScope>();
 
         public UserInfoResponseGeneratorTests()
         {
@@ -46,14 +48,15 @@ namespace IdentityServer.UnitTests.ResponseHandling
                 }
             }.CreatePrincipal();
 
-            _resourceStore = new InMemoryResourcesStore(_identityResources, _apiResources);
+            _resourceStore = new InMemoryResourcesStore(_identityResources, _apiResources, _apiScopes);
             _subject = new UserInfoResponseGenerator(_mockProfileService, _resourceStore, TestLogger.Create<UserInfoResponseGenerator>());
         }
 
         [Fact]
         public async Task GetRequestedClaimTypesAsync_when_no_scopes_requested_should_return_empty_claim_types()
         {
-            var claims = await _subject.GetRequestedClaimTypesAsync(null);
+            var resources = await _subject.GetRequestedResourcesAsync(null);
+            var claims = await _subject.GetRequestedClaimTypesAsync(resources);
             claims.Should().BeEquivalentTo(new string[] { });
         }
 
@@ -63,7 +66,8 @@ namespace IdentityServer.UnitTests.ResponseHandling
             _identityResources.Add(new IdentityResource("id1", new[] { "c1", "c2" }));
             _identityResources.Add(new IdentityResource("id2", new[] { "c2", "c3" }));
 
-            var claims = await _subject.GetRequestedClaimTypesAsync(new[] { "id1", "id2", "id3" });
+            var resources = await _subject.GetRequestedResourcesAsync(new[] { "id1", "id2", "id3" });
+            var claims = await _subject.GetRequestedClaimTypesAsync(resources);
             claims.Should().BeEquivalentTo(new string[] { "c1", "c2", "c3" });
         }
 
@@ -73,7 +77,8 @@ namespace IdentityServer.UnitTests.ResponseHandling
             _identityResources.Add(new IdentityResource("id1", new[] { "c1", "c2" }) { Enabled = false });
             _identityResources.Add(new IdentityResource("id2", new[] { "c2", "c3" }));
 
-            var claims = await _subject.GetRequestedClaimTypesAsync(new[] { "id1", "id2", "id3" });
+            var resources = await _subject.GetRequestedResourcesAsync(new[] { "id1", "id2", "id3" });
+            var claims = await _subject.GetRequestedClaimTypesAsync(resources);
             claims.Should().BeEquivalentTo(new string[] { "c2", "c3" });
         }
 
@@ -109,10 +114,21 @@ namespace IdentityServer.UnitTests.ResponseHandling
         {
             _identityResources.Add(new IdentityResource("id1", new[] { "foo" }));
             _identityResources.Add(new IdentityResource("id2", new[] { "bar" }));
+            
+            var address = new
+            {
+                street_address = "One Hacker Way",
+                locality = "Heidelberg",
+                postal_code = 69118,
+                country = "Germany"
+            };
+            
             _mockProfileService.ProfileClaims = new[]
             {
                 new Claim("email", "fred@gmail.com"),
-                new Claim("name", "fred jones")
+                new Claim("name", "fred jones"),
+                new Claim("address", @"{ 'street_address': 'One Hacker Way', 'locality': 'Heidelberg', 'postal_code': 69118, 'country': 'Germany' }", IdentityServerConstants.ClaimValueTypes.Json),
+                new Claim("address2", JsonSerializer.Serialize(address), IdentityServerConstants.ClaimValueTypes.Json)
             };
 
             var result = new UserInfoRequestValidationResult
@@ -136,6 +152,14 @@ namespace IdentityServer.UnitTests.ResponseHandling
             claims["email"].Should().Be("fred@gmail.com");
             claims.Should().ContainKey("name");
             claims["name"].Should().Be("fred jones");
+            
+            // this will be treated as a string because this is not valid JSON from the System.Text library point of view
+            claims.Should().ContainKey("address");
+            claims["address"].Should().Be("{ 'street_address': 'One Hacker Way', 'locality': 'Heidelberg', 'postal_code': 69118, 'country': 'Germany' }");
+            
+            // this is a JsonElement
+            claims.Should().ContainKey("address2");
+            claims["address2"].ToString().Should().Be("{\"street_address\":\"One Hacker Way\",\"locality\":\"Heidelberg\",\"postal_code\":69118,\"country\":\"Germany\"}");
         }
 
         [Fact]

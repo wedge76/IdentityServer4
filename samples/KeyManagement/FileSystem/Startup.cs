@@ -1,4 +1,4 @@
-﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
+// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 
@@ -11,14 +11,15 @@ using IdentityModel;
 using System.Linq;
 using System.IO;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace sample
 {
     public class Startup
     {
-        public IHostingEnvironment Environment { get; }
+        public IWebHostEnvironment Environment { get; }
 
-        public Startup(IConfiguration config, IHostingEnvironment environment)
+        public Startup(IConfiguration config, IWebHostEnvironment environment)
         {
             Environment = environment;
         }
@@ -29,8 +30,8 @@ namespace sample
             var cert = X509.LocalMachine.My.SubjectDistinguishedName.Find(name, false).FirstOrDefault();
 
             services.AddDataProtection()
-                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Environment.ContentRootPath, "dataprotectionkeys")))
-                .ProtectKeysWithCertificate(cert);
+                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Environment.ContentRootPath, "dataprotectionkeys")));
+                //.ProtectKeysWithCertificate(cert);
 
             var builder = services.AddIdentityServer()
                 .AddInMemoryIdentityResources(Config.GetIdentityResources())
@@ -39,13 +40,16 @@ namespace sample
                 .AddSigningKeyManagement(
                     options => // configuring options is optional :)
                     {
+                        options.DeleteRetiredKeys = true;
+                        options.KeyType = IdentityServer4.KeyManagement.KeyType.RSA;
+
                         // all of these values in here are changed for local testing
                         options.InitializationDuration = TimeSpan.FromSeconds(5);
                         options.InitializationSynchronizationDelay = TimeSpan.FromSeconds(1);
 
                         options.KeyActivationDelay = TimeSpan.FromSeconds(10);
-                        options.KeyExpiration = TimeSpan.FromSeconds(20);
-                        options.KeyRetirement = TimeSpan.FromSeconds(40);
+                        options.KeyExpiration = options.KeyActivationDelay * 2;
+                        options.KeyRetirement = options.KeyActivationDelay * 3;
 
                         // You can get your own license from:
                         // https://www.identityserver.com/products/KeyManagement

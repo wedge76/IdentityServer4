@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
+using IdentityServer4.Extensions;
 using IdentityServer4.Models;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using static IdentityServer4.IdentityServerConstants;
 
 namespace IdentityServer4.Validation
@@ -37,8 +37,7 @@ namespace IdentityServer4.Validation
                 return fail;
             }
 
-            var cert = parsedSecret.Credential as X509Certificate2;
-            if (cert == null)
+            if (!(parsedSecret.Credential is X509Certificate2 cert))
             {
                 throw new InvalidOperationException("Credential is not a x509 certificate.");
             }
@@ -59,20 +58,12 @@ namespace IdentityServer4.Validation
 
             foreach (var thumbprintSecret in thumbprintSecrets)
             {
-                var secretDescription = string.IsNullOrEmpty(thumbprintSecret.Description) ? "no description" : thumbprintSecret.Description;
-
                 if (thumbprint.Equals(thumbprintSecret.Value, StringComparison.OrdinalIgnoreCase))
                 {
-                    var values = new Dictionary<string, string>
-                    {
-                        { "x5t#S256", thumbprint }
-                    };
-                    var cnf = JsonConvert.SerializeObject(values);
-
                     var result = new SecretValidationResult
                     {
                         Success = true,
-                        Confirmation = cnf
+                        Confirmation = cert.CreateThumbprintCnf()
                     };
 
                     return Task.FromResult(result);
